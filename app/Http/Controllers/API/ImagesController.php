@@ -46,7 +46,7 @@ class ImagesController extends Controller
             $url = $request->input('url');
 
             // Dispatch job to download and upload image
-            ImageDownloadJob::dispatch($url, $request->user()->id);
+            ImageDownloadJob::dispatch($url, $request->user());
 
             return success_response(
                 'Image upload processing, after completion you will notified!',

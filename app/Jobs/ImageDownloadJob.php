@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Events\ImageDownloadedEvent;
 use App\Models\Image;
+use App\Notifications\ImageDownloadedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,23 +13,23 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 
 class ImageDownloadJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $url, $previousImage, $user_id;
+    protected $url, $user;
 
     /**
      * Create a new job instance.
      *
      * @return void
      */
-    public function __construct($url, $user_id, $previousImage = null)
+    public function __construct($url, $user)
     {
-        $this->url           = $url;
-        $this->user_id       = $user_id;
-        $this->previousImage = $previousImage;
+        $this->url  = $url;
+        $this->user = $user;
     }
 
     /**
@@ -58,31 +59,24 @@ class ImageDownloadJob implements ShouldQueue
             $uploaded_file = new UploadedFile($file, $info['basename']);
 
             // upload image and get image path
-            $path = imageUploadHandler($uploaded_file, 'images', '1024x1024', $this->previousImage?->path);
+            $path = imageUploadHandler($uploaded_file, 'images', '1024x1024');
 
             // delete temporary file
             unlink($file);
 
-            $image = $this->previousImage;
-            if ($this->previousImage) {
-                // update image in database
-                $this->previousImage->update([
-                    'name' => $info['filename'],
-                    'path' => $path
-                ]);
-            } else {
-                // store image in database
-                $image = Image::create([
-                    'name'    => $info['filename'],
-                    'path'    => $path,
-                    'user_id' => $this->user_id,
-                ]);
-            }
+            // store image in database
+            $image = Image::create([
+                'name'    => $info['filename'],
+                'path'    => $path,
+                'user_id' => $this->user->id,
+            ]);
 
             // Database transaction commit
             DB::commit();
 
-            event(new ImageDownloadedEvent('Image downloaded & uploaded successfully.', $this->user_id));
+            event(new ImageDownloadedEvent('Image downloaded & uploaded successfully.', $this->user->id));
+
+            Notification::send($this->user, new ImageDownloadedNotification($image));
 
             Log::info('Image downloaded & uploaded successfully.', $image->toArray());
         } catch (\Exception $e) {
